@@ -51,7 +51,7 @@ const viewItems: Array<{ id: ViewKey; label: string; icon: LucideIcon }> = [
 ];
 
 const panel =
-  "rounded-[8px] border border-white/10 bg-[#17161d]/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.075),0_30px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl";
+  "premium-panel rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.14),rgba(255,255,255,0.045)_42%,rgba(255,255,255,0.025))] shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_34px_110px_rgba(0,0,0,0.52)] backdrop-blur-2xl";
 
 const spring = { type: "spring", stiffness: 320, damping: 30 } as const;
 
@@ -292,9 +292,9 @@ export function StudyOperatingSystem() {
   }
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#020305] text-slate-100">
+    <main className="premium-shell min-h-screen overflow-hidden text-slate-100">
       <AnimatedBackdrop />
-      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)_340px]">
+      <div className="grid min-h-screen grid-cols-1 gap-4 p-3 lg:grid-cols-[300px_minmax(0,1fr)_340px] lg:p-4 xl:gap-5 xl:p-5">
         <VaultSidebar
           index={index}
           activePath={activePath}
@@ -305,7 +305,7 @@ export function StudyOperatingSystem() {
           onSelect={selectNote}
         />
 
-        <section className="min-w-0 border-x border-white/10 bg-black/20 backdrop-blur-sm">
+        <section className="premium-workspace min-w-0 overflow-hidden rounded-[32px] border border-white/10 bg-black/[0.18] shadow-[0_30px_120px_rgba(0,0,0,0.42)] backdrop-blur-sm">
           <TopBar
             activePath={activePath}
             query={query}
@@ -327,7 +327,7 @@ export function StudyOperatingSystem() {
               animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
               exit={{ opacity: 0, y: -12, scale: 0.99, filter: "blur(8px)" }}
               transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}
-              className="h-[calc(100vh-86px)] overflow-y-auto px-4 py-4 sm:px-6"
+              className="h-[calc(100vh-116px)] overflow-y-auto px-4 py-5 sm:px-7"
             >
               {activeView === "dashboard" && (
                 <Dashboard index={index} cards={scopedCards} tests={scopedTests} notes={visibleNotes} telemetry={telemetry} onView={setActiveView} />
@@ -390,7 +390,7 @@ function VaultSidebar(props: {
   onSelect: (id: string) => void;
 }) {
   return (
-    <aside className="hidden h-screen overflow-y-auto bg-black/45 p-4 backdrop-blur-2xl lg:block">
+    <aside className="premium-rail hidden h-[calc(100vh-40px)] overflow-y-auto rounded-[32px] border border-white/10 bg-white/[0.045] p-4 shadow-[0_28px_90px_rgba(0,0,0,0.45)] backdrop-blur-2xl lg:block">
       <div className="mb-6 flex items-center gap-3">
         <motion.div
           animate={{ rotate: [0, 3, -3, 0], y: [0, -3, 0] }}
@@ -545,7 +545,7 @@ function TopBar(props: {
   onReload: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-20 border-b border-white/10 bg-[#050608]/80 px-4 py-4 backdrop-blur-2xl sm:px-6">
+    <header className="sticky top-0 z-20 border-b border-white/10 bg-[#050608]/55 px-4 py-5 backdrop-blur-2xl sm:px-7">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
         <div>
           <p className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-cyan-100/75">
@@ -611,20 +611,20 @@ function Dashboard({
     .slice(0, 4);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 xl:space-y-6">
       <section className="grid gap-4 xl:grid-cols-[1.25fr_.75fr]">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={spring}
-          className={cn(panel, "relative overflow-hidden p-6")}
+          className={cn(panel, "relative overflow-hidden p-7 xl:p-8")}
         >
-          <div className="absolute right-0 top-0 h-44 w-44 rounded-full bg-[#f97316]/10 blur-3xl" />
-          <div className="absolute bottom-0 right-20 h-44 w-44 rounded-full bg-[#28d6bd]/10 blur-3xl" />
+          <div className="absolute -right-12 -top-16 h-72 w-72 rounded-full bg-[#f97316]/20 blur-3xl" />
+          <div className="absolute -bottom-16 right-28 h-72 w-72 rounded-full bg-[#28d6bd]/16 blur-3xl" />
           <div className="relative flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-[#f7a36c]">Study cockpit</p>
-              <h2 className="mt-2 text-4xl font-semibold leading-tight text-white">Welcome back, Rehan</h2>
+              <p className="text-xs uppercase tracking-[0.34em] text-[#f7a36c]">Study cockpit</p>
+              <h2 className="luxury-gradient-text mt-3 max-w-3xl text-5xl font-semibold leading-[0.95] tracking-[-0.055em] xl:text-6xl">Welcome back, Rehan</h2>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
                 Track today&apos;s focus, pick the next study object, and keep the vault moving instead of just storing notes.
               </p>
@@ -781,7 +781,7 @@ function Dashboard({
               <span className="text-sm text-cyan-100">{subject.completion}%</span>
             </div>
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/8">
-              <motion.div initial={{ width: 0 }} animate={{ width: `${subject.completion}%` }} transition={{ duration: 0.9, ease: "easeOut" }} className="h-full rounded-full bg-[#d7eef2]" />
+              <motion.div initial={{ width: 0 }} animate={{ width: `${subject.completion}%` }} transition={{ duration: 0.9, ease: "easeOut" }} className="animated-premium-gradient h-full rounded-full bg-gradient-to-r from-[#f97316] via-[#a78bfa] to-[#28d6bd]" />
             </div>
             <p className="mt-3 text-sm text-slate-400">{subject.weak} weak flags / {subject.links} relational links</p>
           </motion.div>
@@ -882,7 +882,7 @@ function FlashcardWorkspace({ cards, telemetry }: { cards: Flashcard[]; telemetr
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/8">
             <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-[#f97316] to-[#28d6bd]"
+              className="animated-premium-gradient h-full rounded-full bg-gradient-to-r from-[#f97316] via-[#a78bfa] to-[#28d6bd]"
               animate={{ width: `${filtered.length ? Math.min(100, (reviewed / filtered.length) * 100) : 0}%` }}
             />
           </div>
@@ -993,7 +993,7 @@ function TestWorkspace({ questions, telemetry }: { questions: TestQuestion[]; te
       </aside>
       <section className={cn(panel, "relative overflow-hidden p-6")}>
         <div className="absolute inset-x-0 top-0 h-1 bg-white/8">
-          <motion.div className="h-full bg-gradient-to-r from-[#f97316] to-[#28d6bd]" animate={{ width: `${progress}%` }} />
+          <motion.div className="animated-premium-gradient h-full bg-gradient-to-r from-[#f97316] via-[#a78bfa] to-[#28d6bd]" animate={{ width: `${progress}%` }} />
         </div>
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-cyan-100">Question {active + 1} / {filtered.length} / {question.type}</p>
@@ -1089,7 +1089,7 @@ function AIPanel(props: {
   onAsk: () => void;
 }) {
   return (
-    <aside className="hidden h-screen overflow-y-auto bg-black/45 p-4 backdrop-blur-2xl lg:block">
+    <aside className="premium-rail hidden h-[calc(100vh-40px)] overflow-y-auto rounded-[32px] border border-white/10 bg-white/[0.045] p-4 shadow-[0_28px_90px_rgba(0,0,0,0.45)] backdrop-blur-2xl lg:block">
       <div className={cn(panel, "p-4")}>
         <div className="flex items-center gap-3">
           <div className="grid size-10 place-items-center rounded-[8px] bg-white/10 text-cyan-100">
