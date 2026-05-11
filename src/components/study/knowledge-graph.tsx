@@ -114,14 +114,14 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
           style: {
             width: "mapData(degree, 0, 30, 12, 34)",
             height: "mapData(degree, 0, 30, 12, 34)",
-            "background-color": "#a7adb3",
-            "border-color": "#e7eaee",
+            "background-color": "#c9c2bb",
+            "border-color": "#f4efe8",
             "border-width": 0.5,
             "font-family": "Inter, Arial, sans-serif",
             "font-size": 10,
-            color: "#e9edf1",
+            color: "#f2eee8",
             label: "data(label)",
-            "text-background-color": "#1d1d1f",
+            "text-background-color": "#17161d",
             "text-background-opacity": 0.72,
             "text-background-padding": "3px",
             "text-margin-y": 9,
@@ -135,7 +135,7 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
           style: {
             width: 26,
             height: 26,
-            "background-color": "#d7dadd",
+            "background-color": "#f1a15f",
             "border-color": "#ffffff",
           },
         },
@@ -144,7 +144,7 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
           style: {
             width: 9,
             height: 9,
-            "background-color": "#70757b",
+            "background-color": "#28d6bd",
             label: "",
           },
         },
@@ -153,7 +153,7 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
           style: {
             width: 42,
             height: 42,
-            "background-color": "#f4f7fb",
+            "background-color": "#f5efe6",
             "border-color": "#ffffff",
             "border-width": 2,
             color: "#ffffff",
@@ -164,8 +164,8 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
           selector: "edge",
           style: {
             width: 1,
-            "line-color": "rgba(210,218,224,0.24)",
-            "target-arrow-color": "rgba(210,218,224,0.35)",
+            "line-color": "rgba(229,219,207,0.22)",
+            "target-arrow-color": "rgba(40,214,189,0.42)",
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
             opacity: 0.78,
@@ -198,7 +198,7 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
   }, [graph, mode, onSelect, selectedId]);
 
   return (
-    <div className="relative h-full min-h-[560px] w-full overflow-hidden rounded-[8px] bg-[#1f1f20]">
+    <div className="relative h-full min-h-[560px] w-full overflow-hidden rounded-[8px] bg-[#1c1a20]">
       <div className="absolute left-4 top-4 z-10 flex rounded-[8px] border border-white/10 bg-black/45 p-1 backdrop-blur-xl">
         {modes.map((item) => {
           const Icon = item.icon;
@@ -226,7 +226,7 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
         })}
       </div>
       <div className="absolute bottom-4 left-4 z-10 rounded-[8px] border border-white/10 bg-black/45 px-3 py-2 text-xs text-slate-300 backdrop-blur-xl">
-        {graph.nodes.length} nodes · {graph.edges.length} links · click a node to open
+        {graph.nodes.length} nodes / {graph.edges.length} links / click a node to open
       </div>
       <div ref={containerRef} className="h-full min-h-[560px] w-full" />
     </div>

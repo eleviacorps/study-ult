@@ -6,9 +6,11 @@ import {
   BookOpen,
   Bot,
   Brain,
+  CalendarDays,
   Check,
   ChevronDown,
   CircleDot,
+  Clock3,
   FileText,
   FlaskConical,
   Folder,
@@ -22,8 +24,10 @@ import {
   Send,
   Sigma,
   Sparkles,
+  Square,
   Target,
   Timer,
+  Trophy,
   WandSparkles,
   Zap,
   type LucideIcon,
@@ -47,9 +51,118 @@ const viewItems: Array<{ id: ViewKey; label: string; icon: LucideIcon }> = [
 ];
 
 const panel =
-  "rounded-[8px] border border-white/10 bg-white/[0.065] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_28px_90px_rgba(0,0,0,0.34)] backdrop-blur-2xl";
+  "rounded-[8px] border border-white/10 bg-[#17161d]/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.075),0_30px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl";
 
 const spring = { type: "spring", stiffness: 320, damping: 30 } as const;
+
+type StudyEvent = {
+  id: string;
+  kind: "reading" | "flashcards" | "test" | "planning";
+  label: string;
+  minutes: number;
+  score?: number;
+  total?: number;
+  createdAt: string;
+};
+
+type StudyTelemetry = ReturnType<typeof useStudyTelemetry>;
+
+function dayKey(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function useStudyTelemetry(scope: string) {
+  const [events, setEvents] = useState<StudyEvent[]>(() => {
+    if (typeof window === "undefined") return [];
+    const raw = window.localStorage.getItem("studyult.telemetry");
+    return raw ? JSON.parse(raw) : [];
+  });
+  const [running, setRunning] = useState(false);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    window.localStorage.setItem("studyult.telemetry", JSON.stringify(events.slice(-240)));
+  }, [events]);
+
+  useEffect(() => {
+    if (!running || !startedAt) return;
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [running, startedAt]);
+
+  const logEvent = useCallback((event: Omit<StudyEvent, "id" | "createdAt">) => {
+    setEvents((current) => [
+      ...current,
+      {
+        ...event,
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+  }, []);
+
+  const startFocus = useCallback(() => {
+    setStartedAt(Date.now());
+    setElapsedSeconds(0);
+    setRunning(true);
+  }, []);
+
+  const stopFocus = useCallback(() => {
+    if (startedAt) {
+      logEvent({
+        kind: "reading",
+        label: scope === "All" ? "General vault study" : scope,
+        minutes: Math.max(1, Math.round((Date.now() - startedAt) / 60000)),
+      });
+    }
+    setRunning(false);
+    setStartedAt(null);
+    setElapsedSeconds(0);
+  }, [logEvent, scope, startedAt]);
+
+  const today = dayKey(new Date());
+  const todayEvents = events.filter((event) => dayKey(new Date(event.createdAt)) === today);
+  const currentMinutes = running ? elapsedSeconds / 60 : 0;
+  const todayMinutes = todayEvents.reduce((sum, event) => sum + event.minutes, 0) + currentMinutes;
+  const last7Days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - index));
+    const key = dayKey(date);
+    return {
+      label: date.toLocaleDateString("en", { weekday: "short" }),
+      minutes:
+        events
+          .filter((event) => dayKey(new Date(event.createdAt)) === key)
+          .reduce((sum, event) => sum + event.minutes, 0) + (key === today ? currentMinutes : 0),
+    };
+  });
+
+  const studyMix = ["reading", "flashcards", "test", "planning"].map((kind) => ({
+    label: kind,
+    value: events.filter((event) => event.kind === kind).reduce((sum, event) => sum + event.minutes, 0),
+  }));
+  const tests = events.filter((event) => event.kind === "test" && event.total);
+  const averageScore = tests.length
+    ? Math.round((tests.reduce((sum, event) => sum + ((event.score ?? 0) / (event.total ?? 1)) * 100, 0) / tests.length))
+    : 0;
+
+  return {
+    events,
+    running,
+    elapsedSeconds,
+    todayMinutes,
+    todayEvents,
+    last7Days,
+    studyMix,
+    averageScore,
+    logEvent,
+    startFocus,
+    stopFocus,
+  };
+}
 
 export function StudyOperatingSystem() {
   const [index, setIndex] = useState<VaultIndex | null>(null);
@@ -60,6 +173,7 @@ export function StudyOperatingSystem() {
   const [aiPrompt, setAiPrompt] = useState("Analyze my current weak areas and suggest the next study move.");
   const [aiAnswer, setAiAnswer] = useState("Ask the tutor after selecting a note, folder, flashcard, or drill.");
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const telemetry = useStudyTelemetry(activePath);
 
   const loadVault = useCallback(async () => {
     const response = await fetch("/api/vault", { cache: "no-store" });
@@ -216,7 +330,7 @@ export function StudyOperatingSystem() {
               className="h-[calc(100vh-86px)] overflow-y-auto px-4 py-4 sm:px-6"
             >
               {activeView === "dashboard" && (
-                <Dashboard index={index} cards={scopedCards} tests={scopedTests} notes={visibleNotes} onView={setActiveView} />
+                <Dashboard index={index} cards={scopedCards} tests={scopedTests} notes={visibleNotes} telemetry={telemetry} onView={setActiveView} />
               )}
               {activeView === "notes" && selectedNote && (
                 <NoteWorkspace note={selectedNote} notes={visibleNotes} onSelect={selectNote} onWikiLink={openWikiLink} />
@@ -224,8 +338,8 @@ export function StudyOperatingSystem() {
               {activeView === "graph" && (
                 <GraphWorkspace index={index} activeSubject={activeSubject} selectedId={selectedId} onSelect={selectNote} />
               )}
-              {activeView === "flashcards" && <FlashcardWorkspace cards={scopedCards.length ? scopedCards : index.flashcards} />}
-              {activeView === "tests" && <TestWorkspace questions={scopedTests.length ? scopedTests : index.tests} />}
+              {activeView === "flashcards" && <FlashcardWorkspace cards={scopedCards.length ? scopedCards : index.flashcards} telemetry={telemetry} />}
+              {activeView === "tests" && <TestWorkspace questions={scopedTests.length ? scopedTests : index.tests} telemetry={telemetry} />}
             </motion.div>
           </AnimatePresence>
         </section>
@@ -471,16 +585,83 @@ function TopBar(props: {
   );
 }
 
-function Dashboard({ index, notes, cards, tests, onView }: { index: VaultIndex; notes: VaultNote[]; cards: Flashcard[]; tests: TestQuestion[]; onView: (view: ViewKey) => void }) {
+function Dashboard({
+  index,
+  notes,
+  cards,
+  tests,
+  telemetry,
+  onView,
+}: {
+  index: VaultIndex;
+  notes: VaultNote[];
+  cards: Flashcard[];
+  tests: TestQuestion[];
+  telemetry: StudyTelemetry;
+  onView: (view: ViewKey) => void;
+}) {
   const metrics = [
-    { label: "Notes", value: notes.length, icon: BookOpen },
-    { label: "Questions", value: tests.length || index.analytics.questionCount, icon: ListChecks },
-    { label: "Flashcards", value: cards.length || index.analytics.flashcardCount, icon: Layers },
-    { label: "Images", value: notes.reduce((sum, note) => sum + note.imageCount, 0), icon: Images },
+    { label: "Today", value: `${Math.round(telemetry.todayMinutes)}m`, icon: Clock3, view: "dashboard" as ViewKey },
+    { label: "Questions", value: tests.length || index.analytics.questionCount, icon: ListChecks, view: "tests" as ViewKey },
+    { label: "Flashcards", value: cards.length || index.analytics.flashcardCount, icon: Layers, view: "flashcards" as ViewKey },
+    { label: "Accuracy", value: telemetry.averageScore ? `${telemetry.averageScore}%` : "--", icon: Trophy, view: "tests" as ViewKey },
   ];
+  const nextNotes = notes
+    .filter((note) => note.questionCount || note.tags.includes("weak") || note.tags.includes("revision"))
+    .slice(0, 4);
 
   return (
     <div className="space-y-5">
+      <section className="grid gap-4 xl:grid-cols-[1.25fr_.75fr]">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={spring}
+          className={cn(panel, "relative overflow-hidden p-6")}
+        >
+          <div className="absolute right-0 top-0 h-44 w-44 rounded-full bg-[#f97316]/10 blur-3xl" />
+          <div className="absolute bottom-0 right-20 h-44 w-44 rounded-full bg-[#28d6bd]/10 blur-3xl" />
+          <div className="relative flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-[#f7a36c]">Study cockpit</p>
+              <h2 className="mt-2 text-4xl font-semibold leading-tight text-white">Welcome back, Rehan</h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
+                Track today&apos;s focus, pick the next study object, and keep the vault moving instead of just storing notes.
+              </p>
+            </div>
+            <div className="rounded-[8px] border border-white/10 bg-black/25 p-4">
+              <p className="text-sm text-slate-400">Current focus</p>
+              <p className="mt-2 text-4xl font-semibold text-white">
+                {Math.floor(telemetry.elapsedSeconds / 60).toString().padStart(2, "0")}:
+                {(telemetry.elapsedSeconds % 60).toString().padStart(2, "0")}
+              </p>
+              <button
+                className={cn(
+                  "mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-[8px] px-4 text-sm text-white transition",
+                  telemetry.running ? "bg-[#f97316]/80 hover:bg-[#f97316]" : "bg-[#28d6bd]/70 hover:bg-[#28d6bd]/90",
+                )}
+                onClick={telemetry.running ? telemetry.stopFocus : telemetry.startFocus}
+                type="button"
+              >
+                {telemetry.running ? <Square className="size-3.5" /> : <Timer className="size-4" />}
+                {telemetry.running ? "End Session" : "Start Focus"}
+              </button>
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring, delay: 0.05 }} className={cn(panel, "p-5")}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-semibold text-white">Study Balance</h3>
+              <p className="text-sm text-slate-400">Where your minutes are going.</p>
+            </div>
+            <CalendarDays className="size-5 text-[#28d6bd]" />
+          </div>
+          <DonutChart data={telemetry.studyMix} />
+        </motion.div>
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-4">
         {metrics.map((metric, itemIndex) => {
           const Icon = metric.icon;
@@ -491,13 +672,14 @@ function Dashboard({ index, notes, cards, tests, onView }: { index: VaultIndex; 
               animate={{ opacity: 1, y: 0 }}
               transition={{ ...spring, delay: itemIndex * 0.04 }}
               whileHover={{ y: -4, scale: 1.01 }}
-              className={cn(panel, "group p-5 text-left")}
-              onClick={() => onView(metric.label === "Questions" ? "tests" : metric.label === "Flashcards" ? "flashcards" : "notes")}
+              className={cn(panel, "group relative overflow-hidden p-5 text-left")}
+              onClick={() => onView(metric.view)}
               type="button"
             >
+              <div className="absolute -right-12 -top-12 h-28 w-28 rounded-full bg-[#f97316]/10 blur-2xl transition group-hover:bg-[#28d6bd]/10" />
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-400">{metric.label}</span>
-                <Icon className="size-4 text-cyan-100 transition group-hover:scale-110" />
+                <Icon className="size-4 text-[#28d6bd] transition group-hover:scale-110" />
               </div>
               <p className="mt-4 text-4xl font-semibold text-white">{metric.value}</p>
             </motion.button>
@@ -505,30 +687,47 @@ function Dashboard({ index, notes, cards, tests, onView }: { index: VaultIndex; 
         })}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
+      <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
         <div className={cn(panel, "p-5")}>
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <h3 className="text-xl font-semibold text-white">Study Flow</h3>
-              <p className="text-sm text-slate-400">Clickable academic actions generated from your vault.</p>
+              <h3 className="text-xl font-semibold text-white">Weekly Activity</h3>
+              <p className="text-sm text-slate-400">Focus minutes, including the live session.</p>
             </div>
-            <button className="rounded-[8px] bg-white/10 px-4 py-2 text-sm text-white transition hover:bg-white/16" onClick={() => onView("flashcards")} type="button">
-              Start Recall
+            <span className="rounded-[8px] bg-white/8 px-3 py-1.5 text-xs text-slate-300">{Math.round(telemetry.todayMinutes)} min today</span>
+          </div>
+          <LineChart data={telemetry.last7Days} />
+        </div>
+
+        <div className={cn(panel, "p-5")}>
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-semibold text-white">Next Study Moves</h3>
+              <p className="text-sm text-slate-400">Generated from weak tags, question density, and active scope.</p>
+            </div>
+            <button className="rounded-[8px] bg-[#f97316]/80 px-4 py-2 text-sm text-white transition hover:bg-[#f97316]" onClick={() => onView("flashcards")} type="button">
+              Start
             </button>
           </div>
           <div className="grid gap-3">
-            {index.tasks.map((task, itemIndex) => (
+            {[...index.tasks.slice(0, 2), ...nextNotes.map((note) => ({
+              id: note.id,
+              title: `Revise ${note.title}`,
+              estimateMinutes: Math.max(12, Math.min(45, Math.round(note.wordCount / 95))),
+              kind: "reading" as const,
+              priority: note.tags.includes("weak") ? "high" as const : "medium" as const,
+            }))].slice(0, 5).map((task, itemIndex) => (
               <motion.button
                 key={task.id}
                 initial={{ opacity: 0, x: -16 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: itemIndex * 0.06 }}
                 whileHover={{ x: 5 }}
-                className="flex items-center gap-3 rounded-[8px] border border-white/8 bg-black/25 p-3 text-left transition hover:bg-white/8"
+                className="flex items-center gap-3 rounded-[8px] border border-white/8 bg-black/25 p-3 text-left transition hover:border-[#f97316]/30 hover:bg-white/8"
                 onClick={() => onView(task.kind === "test" ? "tests" : task.kind === "flashcards" ? "flashcards" : "notes")}
                 type="button"
               >
-                <span className="grid size-10 place-items-center rounded-[8px] bg-cyan-100/10 text-cyan-100">
+                <span className="grid size-10 place-items-center rounded-[8px] bg-[#f97316]/12 text-[#f7a36c]">
                   <Zap className="size-4" />
                 </span>
                 <span className="min-w-0 flex-1">
@@ -540,20 +739,34 @@ function Dashboard({ index, notes, cards, tests, onView }: { index: VaultIndex; 
             ))}
           </div>
         </div>
+      </section>
 
+      <section className="grid gap-4 xl:grid-cols-[.85fr_1.15fr]">
+        <div className={cn(panel, "p-5")}>
+          <h3 className="text-xl font-semibold text-white">Scope Overview</h3>
+          <p className="text-sm text-slate-400">Notes, questions, flashcards, and media in this slice.</p>
+          <BarChart
+            data={[
+              { label: "Notes", value: notes.length },
+              { label: "Questions", value: tests.length || index.analytics.questionCount },
+              { label: "Cards", value: cards.length || index.analytics.flashcardCount },
+              { label: "Images", value: notes.reduce((sum, note) => sum + note.imageCount, 0) },
+            ]}
+          />
+        </div>
         <div className={cn(panel, "p-5")}>
           <h3 className="text-xl font-semibold text-white">Retention Field</h3>
           <p className="text-sm text-slate-400">A compact motion map of recent study intensity.</p>
-          <div className="mt-5 grid grid-cols-7 gap-2">
+          <div className="mt-5 grid grid-cols-14 gap-2">
             {index.analytics.heatmap.map((value, itemIndex) => (
               <motion.div
                 key={`${value}-${itemIndex}`}
                 initial={{ opacity: 0, scale: 0.45, rotate: -8 }}
                 animate={{ opacity: 1, scale: 1, rotate: 0 }}
                 transition={{ delay: itemIndex * 0.014 }}
-                whileHover={{ scale: 1.16 }}
+                whileHover={{ scale: 1.18, y: -2 }}
                 className="aspect-square rounded-[6px] border border-white/8"
-                style={{ background: `rgba(190, 228, 235, ${0.08 + value / 130})` }}
+                style={{ background: `linear-gradient(160deg, rgba(249,115,22,${0.05 + value / 280}), rgba(40,214,189,${0.05 + value / 190}))` }}
               />
             ))}
           </div>
@@ -647,10 +860,11 @@ function NoteWorkspace(props: { note: VaultNote; notes: VaultNote[]; onSelect: (
   );
 }
 
-function FlashcardWorkspace({ cards }: { cards: Flashcard[] }) {
+function FlashcardWorkspace({ cards, telemetry }: { cards: Flashcard[]; telemetry: StudyTelemetry }) {
   const [active, setActive] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [filter, setFilter] = useState("");
+  const [reviewed, setReviewed] = useState(0);
   const filtered = useMemo(() => cards.filter((card) => `${card.question} ${card.answer} ${card.sourcePath}`.toLowerCase().includes(filter.toLowerCase())).slice(0, 300), [cards, filter]);
   const card = filtered[active] ?? filtered[0];
 
@@ -659,10 +873,22 @@ function FlashcardWorkspace({ cards }: { cards: Flashcard[] }) {
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <section className={cn(panel, "flex min-h-[610px] items-center justify-center p-6")}>
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <section className={cn(panel, "relative flex min-h-[610px] items-center justify-center overflow-hidden p-6")}>
+        <div className="absolute left-6 top-6 right-6">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span>Deck progress</span>
+            <span>{Math.min(reviewed, filtered.length)} / {filtered.length}</span>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/8">
+            <motion.div
+              className="h-full rounded-full bg-gradient-to-r from-[#f97316] to-[#28d6bd]"
+              animate={{ width: `${filtered.length ? Math.min(100, (reviewed / filtered.length) * 100) : 0}%` }}
+            />
+          </div>
+        </div>
         <motion.button
-          className="relative h-[390px] w-full max-w-3xl rounded-[8px] border border-white/12 bg-[#0b0d10]/80 p-8 text-left shadow-[0_34px_120px_rgba(0,0,0,0.45)] [transform-style:preserve-3d]"
+          className="glass-sheen relative h-[390px] w-full max-w-3xl rounded-[8px] border border-white/12 bg-[#0b0d10]/82 p-8 text-left shadow-[0_34px_120px_rgba(0,0,0,0.45)] [transform-style:preserve-3d]"
           animate={{ rotateY: flipped ? 180 : 0, y: [0, -8, 0] }}
           transition={{ rotateY: { duration: 0.5 }, y: { duration: 4.8, repeat: Infinity } }}
           whileHover={{ scale: 1.015, rotateX: 2 }}
@@ -695,7 +921,17 @@ function FlashcardWorkspace({ cards }: { cards: Flashcard[] }) {
         />
         <div className="mt-4 grid grid-cols-2 gap-2">
           {["Forgot", "Hard", "Good", "Easy"].map((label, itemIndex) => (
-            <button key={label} className="rounded-[8px] border border-white/10 bg-white/6 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/12" onClick={() => { setFlipped(false); setActive((value) => (value + 1) % Math.max(filtered.length, 1)); }} type="button">
+            <button
+              key={label}
+              className="rounded-[8px] border border-white/10 bg-white/6 px-3 py-2 text-sm text-slate-200 transition hover:border-[#28d6bd]/40 hover:bg-white/12"
+              onClick={() => {
+                telemetry.logEvent({ kind: "flashcards", label: `${label}: ${card.sourcePath}`, minutes: 1 });
+                setReviewed((value) => value + 1);
+                setFlipped(false);
+                setActive((value) => (value + 1) % Math.max(filtered.length, 1));
+              }}
+              type="button"
+            >
               {label}
               <span className="ml-2 text-xs text-slate-500">+{itemIndex + 1}d</span>
             </button>
@@ -708,12 +944,16 @@ function FlashcardWorkspace({ cards }: { cards: Flashcard[] }) {
             </button>
           ))}
         </div>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <SmallMetric label="Reviewed" value={reviewed} />
+          <SmallMetric label="Due" value={filtered.length} />
+        </div>
       </aside>
     </div>
   );
 }
 
-function TestWorkspace({ questions }: { questions: TestQuestion[] }) {
+function TestWorkspace({ questions, telemetry }: { questions: TestQuestion[]; telemetry: StudyTelemetry }) {
   const [active, setActive] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState("");
@@ -722,6 +962,7 @@ function TestWorkspace({ questions }: { questions: TestQuestion[] }) {
   const selected = question ? answers[question.id] : "";
   const answered = Object.keys(answers).length;
   const score = questions.filter((item) => answers[item.id] && answers[item.id] === item.answer).length;
+  const progress = filtered.length ? ((active + 1) / filtered.length) * 100 : 0;
 
   if (!question) {
     return <EmptyState title="No questions found" body="This folder has no parsed tests. Your ph1 MCQs and quizzes are supported, so try selecting Physics/ph1." />;
@@ -750,7 +991,10 @@ function TestWorkspace({ questions }: { questions: TestQuestion[] }) {
           ))}
         </div>
       </aside>
-      <section className={cn(panel, "p-6")}>
+      <section className={cn(panel, "relative overflow-hidden p-6")}>
+        <div className="absolute inset-x-0 top-0 h-1 bg-white/8">
+          <motion.div className="h-full bg-gradient-to-r from-[#f97316] to-[#28d6bd]" animate={{ width: `${progress}%` }} />
+        </div>
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-cyan-100">Question {active + 1} / {filtered.length} / {question.type}</p>
           <span className="rounded-[6px] bg-white/8 px-2 py-1 text-xs text-slate-300">{question.difficulty}</span>
@@ -759,12 +1003,38 @@ function TestWorkspace({ questions }: { questions: TestQuestion[] }) {
         <div className="mt-6 grid gap-3">
           {question.options?.length ? (
             question.options.map((option) => (
-              <button key={option} className={cn("rounded-[8px] border border-white/10 bg-black/25 px-4 py-3 text-left text-sm text-slate-300 transition hover:bg-white/8", selected === option && "border-cyan-100/50 bg-white/12 text-white")} onClick={() => setAnswers((value) => ({ ...value, [question.id]: option }))} type="button">
+              <button
+                key={option}
+                className={cn("rounded-[8px] border border-white/10 bg-black/25 px-4 py-3 text-left text-sm text-slate-300 transition hover:border-[#f97316]/30 hover:bg-white/8", selected === option && "border-[#28d6bd]/60 bg-white/12 text-white")}
+                onClick={() => {
+                  if (!answers[question.id]) {
+                    telemetry.logEvent({
+                      kind: "test",
+                      label: question.concept,
+                      minutes: 1,
+                      score: option === question.answer ? 1 : 0,
+                      total: 1,
+                    });
+                  }
+                  setAnswers((value) => ({ ...value, [question.id]: option }));
+                }}
+                type="button"
+              >
                 {option}
               </button>
             ))
           ) : (
-            <input value={selected} onChange={(event) => setAnswers((value) => ({ ...value, [question.id]: event.target.value }))} placeholder="Type your answer..." className="h-12 rounded-[8px] border border-white/10 bg-black/25 px-4 text-sm text-white outline-none focus:border-cyan-100/40" />
+            <input
+              value={selected}
+              onChange={(event) => setAnswers((value) => ({ ...value, [question.id]: event.target.value }))}
+              onBlur={() => {
+                if (selected) {
+                  telemetry.logEvent({ kind: "test", label: question.concept, minutes: 1 });
+                }
+              }}
+              placeholder="Type your answer..."
+              className="h-12 rounded-[8px] border border-white/10 bg-black/25 px-4 text-sm text-white outline-none focus:border-[#28d6bd]/40"
+            />
           )}
         </div>
         {selected && (
@@ -791,6 +1061,16 @@ function TestWorkspace({ questions }: { questions: TestQuestion[] }) {
         <div className="mt-5 grid grid-cols-2 gap-3">
           <SmallMetric label="Answered" value={answered} />
           <SmallMetric label="Score" value={`${score}/${questions.length}`} />
+        </div>
+        <div className="mt-5">
+          <p className="mb-2 text-xs uppercase tracking-[0.15em] text-slate-500">Question Types</p>
+          <BarChart
+            data={[
+              { label: "MCQ", value: questions.filter((item) => item.type === "mcq").length },
+              { label: "Num", value: questions.filter((item) => item.type === "numerical").length },
+              { label: "AR", value: questions.filter((item) => item.type === "assertion-reason").length },
+            ]}
+          />
         </div>
         <p className="mt-4 text-sm leading-6 text-slate-400">{question.sourcePath}</p>
       </aside>
@@ -858,6 +1138,151 @@ function SmallMetric({ label, value }: { label: string; value: number | string }
     <div className="rounded-[8px] bg-black/25 p-3">
       <p className="text-xs text-slate-500">{label}</p>
       <p className="text-2xl font-semibold text-white">{value}</p>
+    </div>
+  );
+}
+
+function LineChart({ data }: { data: Array<{ label: string; minutes: number }> }) {
+  const max = Math.max(30, ...data.map((item) => item.minutes));
+  const points = data.map((item, index) => {
+    const x = 28 + index * (344 / Math.max(1, data.length - 1));
+    const y = 150 - (item.minutes / max) * 108;
+    return { ...item, x, y };
+  });
+  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+
+  return (
+    <div className="relative h-56 overflow-hidden rounded-[8px] border border-white/8 bg-black/20 p-3">
+      <svg viewBox="0 0 400 190" className="h-full w-full">
+        <defs>
+          <linearGradient id="lineGlow" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stopColor="#f97316" />
+            <stop offset="100%" stopColor="#28d6bd" />
+          </linearGradient>
+          <linearGradient id="areaGlow" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#28d6bd" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#28d6bd" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[0, 1, 2, 3].map((line) => (
+          <line key={line} x1="20" x2="382" y1={42 + line * 36} y2={42 + line * 36} stroke="rgba(255,255,255,.08)" />
+        ))}
+        <motion.path
+          d={`${path} L ${points.at(-1)?.x ?? 372} 170 L ${points[0]?.x ?? 28} 170 Z`}
+          fill="url(#areaGlow)"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.7 }}
+        />
+        <motion.path
+          d={path}
+          fill="none"
+          stroke="url(#lineGlow)"
+          strokeLinecap="round"
+          strokeWidth="3"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 1.1, ease: "easeOut" }}
+        />
+        {points.map((point, index) => (
+          <g key={point.label}>
+            <motion.circle
+              cx={point.x}
+              cy={point.y}
+              r="5"
+              fill="#111316"
+              stroke={index === points.length - 1 ? "#28d6bd" : "#f8c9a8"}
+              strokeWidth="3"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: index * 0.07 }}
+            />
+            <text x={point.x} y="184" textAnchor="middle" fill="rgba(226,232,240,.55)" fontSize="10">
+              {point.label}
+            </text>
+            <text x={point.x} y={Math.max(18, point.y - 12)} textAnchor="middle" fill="rgba(255,255,255,.78)" fontSize="10">
+              {Math.round(point.minutes)}
+            </text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+function DonutChart({ data }: { data: Array<{ label: string; value: number }> }) {
+  const total = Math.max(1, data.reduce((sum, item) => sum + item.value, 0));
+  const colors = ["#f97316", "#28d6bd", "#a78bfa", "#f5d26a"];
+  const segments = data.map((item) => {
+    const previous = data
+      .slice(0, data.indexOf(item))
+      .reduce((sum, current) => sum + (current.value / total) * 264, 0);
+    const length = (item.value / total) * 264;
+    return { ...item, length, offset: previous };
+  });
+
+  return (
+    <div className="mt-5 grid grid-cols-[130px_minmax(0,1fr)] items-center gap-4">
+      <svg viewBox="0 0 120 120" className="size-32 -rotate-90">
+        <circle cx="60" cy="60" r="42" fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="14" />
+        {segments.map((item, index) => {
+          const dash = `${item.length} ${264 - item.length}`;
+          return (
+            <motion.circle
+              key={item.label}
+              cx="60"
+              cy="60"
+              r="42"
+              fill="none"
+              stroke={colors[index % colors.length]}
+              strokeDasharray={dash}
+              strokeDashoffset={-item.offset}
+              strokeLinecap="round"
+              strokeWidth="14"
+              initial={{ strokeDasharray: `0 264` }}
+              animate={{ strokeDasharray: dash }}
+              transition={{ duration: 0.8, delay: index * 0.08 }}
+            />
+          );
+        })}
+      </svg>
+      <div className="space-y-2">
+        {data.map((item, index) => (
+          <div key={item.label} className="flex items-center justify-between gap-3 rounded-[8px] bg-black/20 px-3 py-2">
+            <span className="flex items-center gap-2 text-sm capitalize text-slate-300">
+              <span className="size-2 rounded-full" style={{ background: colors[index % colors.length] }} />
+              {item.label}
+            </span>
+            <span className="text-sm text-white">{Math.round(item.value)}m</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BarChart({ data }: { data: Array<{ label: string; value: number }> }) {
+  const max = Math.max(1, ...data.map((item) => item.value));
+
+  return (
+    <div className="mt-5 flex h-56 items-end gap-3 rounded-[8px] border border-white/8 bg-black/20 p-4">
+      {data.map((item, index) => (
+        <div key={item.label} className="flex h-full min-w-0 flex-1 flex-col justify-end gap-2">
+          <motion.div
+            className="rounded-t-[8px] border border-white/10"
+            style={{
+              background: index % 2 ? "linear-gradient(180deg,#28d6bd,#143f3a)" : "linear-gradient(180deg,#f97316,#4a2111)",
+            }}
+            initial={{ height: 0 }}
+            animate={{ height: `${Math.max(8, (item.value / max) * 100)}%` }}
+            transition={{ duration: 0.8, delay: index * 0.06, ease: "easeOut" }}
+          />
+          <div className="text-center">
+            <p className="truncate text-xs text-slate-400">{item.label}</p>
+            <p className="text-sm font-medium text-white">{item.value}</p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

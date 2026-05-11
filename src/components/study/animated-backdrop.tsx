@@ -44,14 +44,14 @@ function ParticleField() {
 
 export function AnimatedBackdrop() {
   return (
-    <div className="pointer-events-none fixed inset-0 -z-10 bg-[#030407]">
+    <div className="pointer-events-none fixed inset-0 -z-10 bg-[#07070c]">
       <Canvas camera={{ position: [0, 0, 7.5], fov: 55 }}>
         <ambientLight intensity={0.35} />
         <ParticleField />
       </Canvas>
-      <div className="motion-aurora absolute inset-0 bg-[radial-gradient(circle_at_16%_10%,rgba(190,232,238,0.12),transparent_24%),radial-gradient(circle_at_82%_4%,rgba(255,255,255,0.06),transparent_22%),linear-gradient(180deg,rgba(3,4,7,0.18),#020305_82%)]" />
-      <div className="absolute inset-0 opacity-[0.09] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:52px_52px]" />
-      <div className="absolute inset-0 bg-[linear-gradient(115deg,transparent,rgba(255,255,255,0.045)_42%,transparent_60%)]" />
+      <div className="motion-aurora absolute inset-0 bg-[radial-gradient(circle_at_9%_12%,rgba(249,115,22,0.18),transparent_24%),radial-gradient(circle_at_78%_10%,rgba(95,54,180,0.18),transparent_30%),radial-gradient(circle_at_64%_88%,rgba(40,214,189,0.12),transparent_26%),linear-gradient(180deg,rgba(7,7,12,0.08),#050509_84%)]" />
+      <div className="absolute inset-0 opacity-[0.075] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:56px_56px]" />
+      <div className="absolute inset-0 bg-[linear-gradient(115deg,transparent,rgba(255,255,255,0.05)_42%,transparent_60%)]" />
     </div>
   );
 }

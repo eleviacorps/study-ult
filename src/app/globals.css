@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #030407;
-  --foreground: #eef5ff;
+  --background: #07070c;
+  --foreground: #f5f1ea;
 }
 
 @theme inline {
@@ -21,12 +21,12 @@ body {
 }
 
 ::selection {
-  background: rgba(34, 211, 238, 0.28);
+  background: rgba(249, 115, 22, 0.32);
   color: #ffffff;
 }
 
 * {
-  scrollbar-color: rgba(103, 232, 249, 0.28) rgba(255, 255, 255, 0.04);
+  scrollbar-color: rgba(249, 115, 22, 0.34) rgba(255, 255, 255, 0.04);
 }
 
 .rotate-y-180 {
@@ -43,12 +43,14 @@ body {
 }
 
 .prose h1 {
-  font-size: clamp(2.3rem, 5vw, 4.8rem);
+  font-size: clamp(2.15rem, 4.6vw, 4.4rem);
   line-height: 1.06;
 }
 
 .prose h2 {
-  font-size: 1.6rem;
+  font-size: 1.55rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.55rem;
 }
 
 .prose h3 {
@@ -57,7 +59,7 @@ body {
 
 .prose p,
 .prose li {
-  color: rgb(197 205 216);
+  color: rgb(202 197 207);
   line-height: 1.75;
 }
 
@@ -78,7 +80,7 @@ body {
   overflow-x: auto;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.28);
   padding: 1rem;
 }
 
@@ -97,6 +99,9 @@ body {
 
 .prose blockquote {
   margin: 1rem 0;
+  border-radius: 8px;
+  border-left-color: rgba(249, 115, 22, 0.75);
+  background: linear-gradient(90deg, rgba(249, 115, 22, 0.12), rgba(255, 255, 255, 0.035));
 }
 
 .prose hr {
@@ -121,4 +126,25 @@ body {
 
 .motion-aurora {
   animation: aurora-shift 12s ease-in-out infinite;
+}
+
+.glass-sheen {
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-sheen::after {
+  background: linear-gradient(110deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  content: "";
+  height: 160%;
+  left: -80%;
+  position: absolute;
+  top: -30%;
+  transform: rotate(12deg);
+  transition: left 0.8s ease;
+  width: 55%;
+}
+
+.glass-sheen:hover::after {
+  left: 125%;
 }
