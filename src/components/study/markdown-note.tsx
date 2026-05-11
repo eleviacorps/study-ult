@@ -56,13 +56,13 @@ export function MarkdownNote({ note, onWikiLink }: MarkdownNoteProps) {
               <img
                 src={resolvedPath}
                 alt={alt ?? ""}
-                className="my-5 max-h-[520px] w-auto rounded border border-white/10 bg-white/5 shadow-2xl shadow-black/40"
+                className="my-6 max-h-[520px] w-auto rounded-[24px] border border-white/10 bg-white/5 shadow-[0_30px_90px_rgba(0,0,0,0.45)]"
                 loading="lazy"
               />
             );
           },
           blockquote: ({ children }) => (
-            <blockquote className="rounded border-l-2 border-cyan-300/60 bg-cyan-300/10 px-4 py-2 text-cyan-50">
+            <blockquote className="rounded-[22px] border border-cyan-300/20 border-l-cyan-300/70 bg-cyan-300/10 px-5 py-4 text-cyan-50 shadow-[0_20px_60px_rgba(40,214,189,0.08)]">
               {children}
             </blockquote>
           ),

@@ -23,7 +23,6 @@ import {
   Search,
   Send,
   Sigma,
-  Sparkles,
   Square,
   Target,
   Timer,
@@ -37,6 +36,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatedBackdrop } from "@/components/study/animated-backdrop";
 import { KnowledgeGraph } from "@/components/study/knowledge-graph";
 import { MarkdownNote } from "@/components/study/markdown-note";
+import { BarChart, DonutChart, LineChart } from "@/components/study/study-charts";
+import { useStudyTelemetry, type StudyTelemetry } from "@/components/study/study-telemetry";
+import { ContextRow, EmptyState, SmallMetric, StatPill, panel, spring } from "@/components/study/study-ui";
 import { cn } from "@/lib/utils";
 import type { Flashcard, TestQuestion, VaultIndex, VaultNote, VaultTreeItem } from "@/lib/types";
 
@@ -50,120 +52,6 @@ const viewItems: Array<{ id: ViewKey; label: string; icon: LucideIcon }> = [
   { id: "tests", label: "Drills", icon: Timer },
 ];
 
-const panel =
-  "rounded-[8px] border border-white/10 bg-[#17161d]/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.075),0_30px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl";
-
-const spring = { type: "spring", stiffness: 320, damping: 30 } as const;
-
-type StudyEvent = {
-  id: string;
-  kind: "reading" | "flashcards" | "test" | "planning";
-  label: string;
-  minutes: number;
-  score?: number;
-  total?: number;
-  createdAt: string;
-};
-
-type StudyTelemetry = ReturnType<typeof useStudyTelemetry>;
-
-function dayKey(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function useStudyTelemetry(scope: string) {
-  const [events, setEvents] = useState<StudyEvent[]>(() => {
-    if (typeof window === "undefined") return [];
-    const raw = window.localStorage.getItem("studyult.telemetry");
-    return raw ? JSON.parse(raw) : [];
-  });
-  const [running, setRunning] = useState(false);
-  const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-
-  useEffect(() => {
-    window.localStorage.setItem("studyult.telemetry", JSON.stringify(events.slice(-240)));
-  }, [events]);
-
-  useEffect(() => {
-    if (!running || !startedAt) return;
-    const timer = window.setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [running, startedAt]);
-
-  const logEvent = useCallback((event: Omit<StudyEvent, "id" | "createdAt">) => {
-    setEvents((current) => [
-      ...current,
-      {
-        ...event,
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-  }, []);
-
-  const startFocus = useCallback(() => {
-    setStartedAt(Date.now());
-    setElapsedSeconds(0);
-    setRunning(true);
-  }, []);
-
-  const stopFocus = useCallback(() => {
-    if (startedAt) {
-      logEvent({
-        kind: "reading",
-        label: scope === "All" ? "General vault study" : scope,
-        minutes: Math.max(1, Math.round((Date.now() - startedAt) / 60000)),
-      });
-    }
-    setRunning(false);
-    setStartedAt(null);
-    setElapsedSeconds(0);
-  }, [logEvent, scope, startedAt]);
-
-  const today = dayKey(new Date());
-  const todayEvents = events.filter((event) => dayKey(new Date(event.createdAt)) === today);
-  const currentMinutes = running ? elapsedSeconds / 60 : 0;
-  const todayMinutes = todayEvents.reduce((sum, event) => sum + event.minutes, 0) + currentMinutes;
-  const last7Days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (6 - index));
-    const key = dayKey(date);
-    return {
-      label: date.toLocaleDateString("en", { weekday: "short" }),
-      minutes:
-        events
-          .filter((event) => dayKey(new Date(event.createdAt)) === key)
-          .reduce((sum, event) => sum + event.minutes, 0) + (key === today ? currentMinutes : 0),
-    };
-  });
-
-  const studyMix = ["reading", "flashcards", "test", "planning"].map((kind) => ({
-    label: kind,
-    value: events.filter((event) => event.kind === kind).reduce((sum, event) => sum + event.minutes, 0),
-  }));
-  const tests = events.filter((event) => event.kind === "test" && event.total);
-  const averageScore = tests.length
-    ? Math.round((tests.reduce((sum, event) => sum + ((event.score ?? 0) / (event.total ?? 1)) * 100, 0) / tests.length))
-    : 0;
-
-  return {
-    events,
-    running,
-    elapsedSeconds,
-    todayMinutes,
-    todayEvents,
-    last7Days,
-    studyMix,
-    averageScore,
-    logEvent,
-    startFocus,
-    stopFocus,
-  };
-}
-
 export function StudyOperatingSystem() {
   const [index, setIndex] = useState<VaultIndex | null>(null);
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
@@ -173,13 +61,22 @@ export function StudyOperatingSystem() {
   const [aiPrompt, setAiPrompt] = useState("Analyze my current weak areas and suggest the next study move.");
   const [aiAnswer, setAiAnswer] = useState("Ask the tutor after selecting a note, folder, flashcard, or drill.");
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [vaultError, setVaultError] = useState<string | null>(null);
   const telemetry = useStudyTelemetry(activePath);
 
   const loadVault = useCallback(async () => {
-    const response = await fetch("/api/vault", { cache: "no-store" });
-    const data = (await response.json()) as VaultIndex;
-    setIndex(data);
-    setSelectedId((current) => current ?? data.notes.find((note) => note.relativePath.includes("/ph1/"))?.id ?? data.notes[0]?.id);
+    setVaultError(null);
+    try {
+      const response = await fetch("/api/vault", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`Vault API returned ${response.status}`);
+      }
+      const data = (await response.json()) as VaultIndex;
+      setIndex(data);
+      setSelectedId((current) => current ?? data.notes.find((note) => note.relativePath.includes("/ph1/"))?.id ?? data.notes[0]?.id);
+    } catch (error) {
+      setVaultError(error instanceof Error ? error.message : "Unable to load the vault index.");
+    }
   }, []);
 
   useEffect(() => {
@@ -267,8 +164,13 @@ export function StudyOperatingSystem() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: aiPrompt, provider: "local" }),
       });
+      if (!response.ok) {
+        throw new Error(`Tutor API returned ${response.status}`);
+      }
       const data = await response.json();
-      setAiAnswer(data.answer);
+      setAiAnswer(data.answer ?? "The tutor returned an empty response. Try a more specific prompt.");
+    } catch (error) {
+      setAiAnswer(error instanceof Error ? error.message : "The tutor is unavailable right now. Check your local AI provider and retry.");
     } finally {
       setIsAiLoading(false);
     }
@@ -276,15 +178,21 @@ export function StudyOperatingSystem() {
 
   if (!index) {
     return (
-      <main className="min-h-screen overflow-hidden bg-[#030407] text-white">
+      <main className="premium-shell min-h-screen overflow-hidden text-white">
         <AnimatedBackdrop />
-        <div className="flex min-h-screen items-center justify-center">
+        <div className="flex min-h-screen items-center justify-center p-6">
           <motion.div
-            animate={{ opacity: [0.35, 1, 0.35], scale: [0.97, 1.03, 0.97] }}
-            transition={{ duration: 2.1, repeat: Infinity }}
-            className={cn(panel, "px-6 py-4 text-sm text-cyan-100")}
+            animate={vaultError ? { opacity: 1, scale: 1 } : { opacity: [0.35, 1, 0.35], scale: [0.97, 1.03, 0.97] }}
+            transition={{ duration: 2.1, repeat: vaultError ? 0 : Infinity }}
+            className={cn(panel, "max-w-md px-6 py-5 text-center text-sm text-cyan-100")}
           >
-            Indexing MasterVault...
+            <p className="text-lg font-semibold text-white">{vaultError ? "Vault could not load" : "Indexing MasterVault..."}</p>
+            {vaultError && <p className="mt-2 text-slate-300">{vaultError}</p>}
+            {vaultError && (
+              <button className="mt-4 rounded-full bg-white/12 px-4 py-2 text-white transition hover:bg-white/18" onClick={loadVault} type="button">
+                Retry index
+              </button>
+            )}
           </motion.div>
         </div>
       </main>
@@ -292,9 +200,9 @@ export function StudyOperatingSystem() {
   }
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#020305] text-slate-100">
+    <main className="premium-shell min-h-screen overflow-x-hidden text-slate-100">
       <AnimatedBackdrop />
-      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)_340px]">
+      <div className="grid min-h-screen grid-cols-1 gap-4 p-3 lg:h-screen lg:grid-cols-[280px_minmax(0,1fr)_300px] xl:grid-cols-[300px_minmax(0,1fr)_320px] lg:p-4 xl:gap-5 xl:p-5">
         <VaultSidebar
           index={index}
           activePath={activePath}
@@ -305,7 +213,7 @@ export function StudyOperatingSystem() {
           onSelect={selectNote}
         />
 
-        <section className="min-w-0 border-x border-white/10 bg-black/20 backdrop-blur-sm">
+        <section className="premium-workspace flex min-h-[calc(100vh-1.5rem)] min-w-0 flex-col overflow-hidden rounded-[32px] border border-white/10 bg-black/[0.18] shadow-[0_30px_120px_rgba(0,0,0,0.42)] backdrop-blur-sm lg:h-[calc(100vh-2rem)]">
           <TopBar
             activePath={activePath}
             query={query}
@@ -327,7 +235,7 @@ export function StudyOperatingSystem() {
               animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
               exit={{ opacity: 0, y: -12, scale: 0.99, filter: "blur(8px)" }}
               transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}
-              className="h-[calc(100vh-86px)] overflow-y-auto px-4 py-4 sm:px-6"
+              className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7"
             >
               {activeView === "dashboard" && (
                 <Dashboard index={index} cards={scopedCards} tests={scopedTests} notes={visibleNotes} telemetry={telemetry} onView={setActiveView} />
@@ -390,7 +298,7 @@ function VaultSidebar(props: {
   onSelect: (id: string) => void;
 }) {
   return (
-    <aside className="hidden h-screen overflow-y-auto bg-black/45 p-4 backdrop-blur-2xl lg:block">
+    <aside className="premium-rail hidden h-[calc(100vh-2rem)] min-h-0 overflow-y-auto rounded-[32px] border border-white/10 bg-white/[0.045] p-4 shadow-[0_28px_90px_rgba(0,0,0,0.45)] backdrop-blur-2xl lg:block">
       <div className="mb-6 flex items-center gap-3">
         <motion.div
           animate={{ rotate: [0, 3, -3, 0], y: [0, -3, 0] }}
@@ -545,8 +453,8 @@ function TopBar(props: {
   onReload: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-20 border-b border-white/10 bg-[#050608]/80 px-4 py-4 backdrop-blur-2xl sm:px-6">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+    <header className="sticky top-0 z-20 shrink-0 border-b border-white/10 bg-[#050608]/70 px-4 py-5 backdrop-blur-2xl sm:px-7">
+      <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center">
         <div>
           <p className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-cyan-100/75">
             <WandSparkles className="size-3.5" />
@@ -611,20 +519,20 @@ function Dashboard({
     .slice(0, 4);
 
   return (
-    <div className="space-y-5">
-      <section className="grid gap-4 xl:grid-cols-[1.25fr_.75fr]">
+    <div className="space-y-5 xl:space-y-6">
+      <section className="grid gap-4 2xl:grid-cols-[1.25fr_.75fr]">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={spring}
-          className={cn(panel, "relative overflow-hidden p-6")}
+          className={cn(panel, "relative overflow-hidden p-7 xl:p-8")}
         >
-          <div className="absolute right-0 top-0 h-44 w-44 rounded-full bg-[#f97316]/10 blur-3xl" />
-          <div className="absolute bottom-0 right-20 h-44 w-44 rounded-full bg-[#28d6bd]/10 blur-3xl" />
-          <div className="relative flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+          <div className="absolute -right-12 -top-16 h-72 w-72 rounded-full bg-[#f97316]/20 blur-3xl" />
+          <div className="absolute -bottom-16 right-28 h-72 w-72 rounded-full bg-[#28d6bd]/16 blur-3xl" />
+          <div className="relative flex flex-col gap-6 2xl:flex-row 2xl:items-center 2xl:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-[#f7a36c]">Study cockpit</p>
-              <h2 className="mt-2 text-4xl font-semibold leading-tight text-white">Welcome back, Rehan</h2>
+              <p className="text-xs uppercase tracking-[0.34em] text-[#f7a36c]">Study cockpit</p>
+              <h2 className="luxury-gradient-text mt-3 max-w-3xl text-5xl font-semibold leading-[0.95] tracking-[-0.055em] xl:text-6xl">Welcome back, Rehan</h2>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
                 Track today&apos;s focus, pick the next study object, and keep the vault moving instead of just storing notes.
               </p>
@@ -687,7 +595,7 @@ function Dashboard({
         })}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+      <section className="grid gap-4 2xl:grid-cols-[1fr_1fr]">
         <div className={cn(panel, "p-5")}>
           <div className="mb-5 flex items-center justify-between">
             <div>
@@ -741,7 +649,7 @@ function Dashboard({
         </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[.85fr_1.15fr]">
+      <section className="grid gap-4 2xl:grid-cols-[.85fr_1.15fr]">
         <div className={cn(panel, "p-5")}>
           <h3 className="text-xl font-semibold text-white">Scope Overview</h3>
           <p className="text-sm text-slate-400">Notes, questions, flashcards, and media in this slice.</p>
@@ -757,7 +665,7 @@ function Dashboard({
         <div className={cn(panel, "p-5")}>
           <h3 className="text-xl font-semibold text-white">Retention Field</h3>
           <p className="text-sm text-slate-400">A compact motion map of recent study intensity.</p>
-          <div className="mt-5 grid grid-cols-14 gap-2">
+          <div className="mt-5 grid grid-cols-7 gap-2 sm:[grid-template-columns:repeat(14,minmax(0,1fr))]">
             {index.analytics.heatmap.map((value, itemIndex) => (
               <motion.div
                 key={`${value}-${itemIndex}`}
@@ -773,7 +681,7 @@ function Dashboard({
         </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-3">
+      <section className="grid gap-4 2xl:grid-cols-3">
         {index.analytics.subjectProgress.map((subject) => (
           <motion.div key={subject.subject} whileHover={{ y: -4 }} className={cn(panel, "p-5")}>
             <div className="flex items-center justify-between">
@@ -781,7 +689,7 @@ function Dashboard({
               <span className="text-sm text-cyan-100">{subject.completion}%</span>
             </div>
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/8">
-              <motion.div initial={{ width: 0 }} animate={{ width: `${subject.completion}%` }} transition={{ duration: 0.9, ease: "easeOut" }} className="h-full rounded-full bg-[#d7eef2]" />
+              <motion.div initial={{ width: 0 }} animate={{ width: `${subject.completion}%` }} transition={{ duration: 0.9, ease: "easeOut" }} className="animated-premium-gradient h-full rounded-full bg-gradient-to-r from-[#f97316] via-[#a78bfa] to-[#28d6bd]" />
             </div>
             <p className="mt-3 text-sm text-slate-400">{subject.weak} weak flags / {subject.links} relational links</p>
           </motion.div>
@@ -793,7 +701,7 @@ function Dashboard({
 
 function GraphWorkspace(props: { index: VaultIndex; activeSubject: string; selectedId?: string; onSelect: (id: string) => void }) {
   return (
-    <div className="grid h-full min-h-[720px] gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="grid h-full min-h-[640px] gap-4 2xl:grid-cols-[minmax(0,1fr)_300px]">
       <div className={cn(panel, "overflow-hidden p-2")}>
         <KnowledgeGraph index={props.index} subject={props.activeSubject} selectedId={props.selectedId} onSelect={props.onSelect} />
       </div>
@@ -820,7 +728,7 @@ function GraphWorkspace(props: { index: VaultIndex; activeSubject: string; selec
 
 function NoteWorkspace(props: { note: VaultNote; notes: VaultNote[]; onSelect: (id: string) => void; onWikiLink: (title: string) => void }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_300px]">
       <section className={cn(panel, "p-5")}>
         <div className="mb-5 border-b border-white/10 pb-4">
           <p className="text-sm text-cyan-100">{props.note.relativePath}</p>
@@ -873,7 +781,7 @@ function FlashcardWorkspace({ cards, telemetry }: { cards: Flashcard[]; telemetr
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+    <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_340px]">
       <section className={cn(panel, "relative flex min-h-[610px] items-center justify-center overflow-hidden p-6")}>
         <div className="absolute left-6 top-6 right-6">
           <div className="flex items-center justify-between text-xs text-slate-400">
@@ -882,7 +790,7 @@ function FlashcardWorkspace({ cards, telemetry }: { cards: Flashcard[]; telemetr
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/8">
             <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-[#f97316] to-[#28d6bd]"
+              className="animated-premium-gradient h-full rounded-full bg-gradient-to-r from-[#f97316] via-[#a78bfa] to-[#28d6bd]"
               animate={{ width: `${filtered.length ? Math.min(100, (reviewed / filtered.length) * 100) : 0}%` }}
             />
           </div>
@@ -969,7 +877,7 @@ function TestWorkspace({ questions, telemetry }: { questions: TestQuestion[]; te
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)_280px]">
+    <div className="grid gap-4 2xl:grid-cols-[320px_minmax(0,1fr)_280px]">
       <aside className={cn(panel, "p-4")}>
         <h3 className="text-lg font-semibold text-white">Question Bank</h3>
         <p className="text-sm text-slate-400">{filtered.length} parsed questions</p>
@@ -993,7 +901,7 @@ function TestWorkspace({ questions, telemetry }: { questions: TestQuestion[]; te
       </aside>
       <section className={cn(panel, "relative overflow-hidden p-6")}>
         <div className="absolute inset-x-0 top-0 h-1 bg-white/8">
-          <motion.div className="h-full bg-gradient-to-r from-[#f97316] to-[#28d6bd]" animate={{ width: `${progress}%` }} />
+          <motion.div className="animated-premium-gradient h-full bg-gradient-to-r from-[#f97316] via-[#a78bfa] to-[#28d6bd]" animate={{ width: `${progress}%` }} />
         </div>
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-cyan-100">Question {active + 1} / {filtered.length} / {question.type}</p>
@@ -1089,7 +997,7 @@ function AIPanel(props: {
   onAsk: () => void;
 }) {
   return (
-    <aside className="hidden h-screen overflow-y-auto bg-black/45 p-4 backdrop-blur-2xl lg:block">
+    <aside className="premium-rail hidden h-[calc(100vh-2rem)] min-h-0 overflow-y-auto rounded-[32px] border border-white/10 bg-white/[0.045] p-4 shadow-[0_28px_90px_rgba(0,0,0,0.45)] backdrop-blur-2xl lg:block">
       <div className={cn(panel, "p-4")}>
         <div className="flex items-center gap-3">
           <div className="grid size-10 place-items-center rounded-[8px] bg-white/10 text-cyan-100">
@@ -1121,190 +1029,5 @@ function AIPanel(props: {
         </div>
       </div>
     </aside>
-  );
-}
-
-function StatPill({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-2 rounded-[8px] border border-white/10 bg-white/6 px-3 py-1.5 text-xs text-slate-300">
-      <Icon className="size-3.5 text-cyan-100" />
-      {label}
-    </span>
-  );
-}
-
-function SmallMetric({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="rounded-[8px] bg-black/25 p-3">
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="text-2xl font-semibold text-white">{value}</p>
-    </div>
-  );
-}
-
-function LineChart({ data }: { data: Array<{ label: string; minutes: number }> }) {
-  const max = Math.max(30, ...data.map((item) => item.minutes));
-  const points = data.map((item, index) => {
-    const x = 28 + index * (344 / Math.max(1, data.length - 1));
-    const y = 150 - (item.minutes / max) * 108;
-    return { ...item, x, y };
-  });
-  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
-
-  return (
-    <div className="relative h-56 overflow-hidden rounded-[8px] border border-white/8 bg-black/20 p-3">
-      <svg viewBox="0 0 400 190" className="h-full w-full">
-        <defs>
-          <linearGradient id="lineGlow" x1="0" x2="1" y1="0" y2="0">
-            <stop offset="0%" stopColor="#f97316" />
-            <stop offset="100%" stopColor="#28d6bd" />
-          </linearGradient>
-          <linearGradient id="areaGlow" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#28d6bd" stopOpacity="0.22" />
-            <stop offset="100%" stopColor="#28d6bd" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {[0, 1, 2, 3].map((line) => (
-          <line key={line} x1="20" x2="382" y1={42 + line * 36} y2={42 + line * 36} stroke="rgba(255,255,255,.08)" />
-        ))}
-        <motion.path
-          d={`${path} L ${points.at(-1)?.x ?? 372} 170 L ${points[0]?.x ?? 28} 170 Z`}
-          fill="url(#areaGlow)"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.7 }}
-        />
-        <motion.path
-          d={path}
-          fill="none"
-          stroke="url(#lineGlow)"
-          strokeLinecap="round"
-          strokeWidth="3"
-          initial={{ pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: 1.1, ease: "easeOut" }}
-        />
-        {points.map((point, index) => (
-          <g key={point.label}>
-            <motion.circle
-              cx={point.x}
-              cy={point.y}
-              r="5"
-              fill="#111316"
-              stroke={index === points.length - 1 ? "#28d6bd" : "#f8c9a8"}
-              strokeWidth="3"
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: index * 0.07 }}
-            />
-            <text x={point.x} y="184" textAnchor="middle" fill="rgba(226,232,240,.55)" fontSize="10">
-              {point.label}
-            </text>
-            <text x={point.x} y={Math.max(18, point.y - 12)} textAnchor="middle" fill="rgba(255,255,255,.78)" fontSize="10">
-              {Math.round(point.minutes)}
-            </text>
-          </g>
-        ))}
-      </svg>
-    </div>
-  );
-}
-
-function DonutChart({ data }: { data: Array<{ label: string; value: number }> }) {
-  const total = Math.max(1, data.reduce((sum, item) => sum + item.value, 0));
-  const colors = ["#f97316", "#28d6bd", "#a78bfa", "#f5d26a"];
-  const segments = data.map((item) => {
-    const previous = data
-      .slice(0, data.indexOf(item))
-      .reduce((sum, current) => sum + (current.value / total) * 264, 0);
-    const length = (item.value / total) * 264;
-    return { ...item, length, offset: previous };
-  });
-
-  return (
-    <div className="mt-5 grid grid-cols-[130px_minmax(0,1fr)] items-center gap-4">
-      <svg viewBox="0 0 120 120" className="size-32 -rotate-90">
-        <circle cx="60" cy="60" r="42" fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="14" />
-        {segments.map((item, index) => {
-          const dash = `${item.length} ${264 - item.length}`;
-          return (
-            <motion.circle
-              key={item.label}
-              cx="60"
-              cy="60"
-              r="42"
-              fill="none"
-              stroke={colors[index % colors.length]}
-              strokeDasharray={dash}
-              strokeDashoffset={-item.offset}
-              strokeLinecap="round"
-              strokeWidth="14"
-              initial={{ strokeDasharray: `0 264` }}
-              animate={{ strokeDasharray: dash }}
-              transition={{ duration: 0.8, delay: index * 0.08 }}
-            />
-          );
-        })}
-      </svg>
-      <div className="space-y-2">
-        {data.map((item, index) => (
-          <div key={item.label} className="flex items-center justify-between gap-3 rounded-[8px] bg-black/20 px-3 py-2">
-            <span className="flex items-center gap-2 text-sm capitalize text-slate-300">
-              <span className="size-2 rounded-full" style={{ background: colors[index % colors.length] }} />
-              {item.label}
-            </span>
-            <span className="text-sm text-white">{Math.round(item.value)}m</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function BarChart({ data }: { data: Array<{ label: string; value: number }> }) {
-  const max = Math.max(1, ...data.map((item) => item.value));
-
-  return (
-    <div className="mt-5 flex h-56 items-end gap-3 rounded-[8px] border border-white/8 bg-black/20 p-4">
-      {data.map((item, index) => (
-        <div key={item.label} className="flex h-full min-w-0 flex-1 flex-col justify-end gap-2">
-          <motion.div
-            className="rounded-t-[8px] border border-white/10"
-            style={{
-              background: index % 2 ? "linear-gradient(180deg,#28d6bd,#143f3a)" : "linear-gradient(180deg,#f97316,#4a2111)",
-            }}
-            initial={{ height: 0 }}
-            animate={{ height: `${Math.max(8, (item.value / max) * 100)}%` }}
-            transition={{ duration: 0.8, delay: index * 0.06, ease: "easeOut" }}
-          />
-          <div className="text-center">
-            <p className="truncate text-xs text-slate-400">{item.label}</p>
-            <p className="text-sm font-medium text-white">{item.value}</p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ContextRow({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
-  return (
-    <div className="flex items-center gap-3 rounded-[8px] bg-black/25 px-3 py-2">
-      <Icon className="size-4 text-cyan-100" />
-      <div className="min-w-0">
-        <p className="text-xs text-slate-500">{label}</p>
-        <p className="line-clamp-1 text-sm text-white">{value}</p>
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({ title, body }: { title: string; body: string }) {
-  return (
-    <div className={cn(panel, "flex min-h-[420px] flex-col items-center justify-center p-8 text-center")}>
-      <Sparkles className="size-8 text-cyan-100" />
-      <h2 className="mt-4 text-2xl font-semibold text-white">{title}</h2>
-      <p className="mt-2 max-w-md text-sm leading-6 text-slate-400">{body}</p>
-    </div>
   );
 }

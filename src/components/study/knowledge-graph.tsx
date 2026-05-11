@@ -114,15 +114,15 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
           style: {
             width: "mapData(degree, 0, 30, 12, 34)",
             height: "mapData(degree, 0, 30, 12, 34)",
-            "background-color": "#c9c2bb",
-            "border-color": "#f4efe8",
-            "border-width": 0.5,
+            "background-color": "#8fe8ff",
+            "border-color": "#ffffff",
+            "border-width": 1,
             "font-family": "Inter, Arial, sans-serif",
             "font-size": 10,
             color: "#f2eee8",
             label: "data(label)",
-            "text-background-color": "#17161d",
-            "text-background-opacity": 0.72,
+            "text-background-color": "#060711",
+            "text-background-opacity": 0.82,
             "text-background-padding": "3px",
             "text-margin-y": 9,
             "text-valign": "bottom",
@@ -135,7 +135,7 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
           style: {
             width: 26,
             height: 26,
-            "background-color": "#f1a15f",
+            "background-color": "#ff8a4c",
             "border-color": "#ffffff",
           },
         },
@@ -144,7 +144,7 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
           style: {
             width: 9,
             height: 9,
-            "background-color": "#28d6bd",
+            "background-color": "#2df5d0",
             label: "",
           },
         },
@@ -153,7 +153,7 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
           style: {
             width: 42,
             height: 42,
-            "background-color": "#f5efe6",
+            "background-color": "#ffffff",
             "border-color": "#ffffff",
             "border-width": 2,
             color: "#ffffff",
@@ -164,8 +164,8 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
           selector: "edge",
           style: {
             width: 1,
-            "line-color": "rgba(229,219,207,0.22)",
-            "target-arrow-color": "rgba(40,214,189,0.42)",
+            "line-color": "rgba(143,232,255,0.24)",
+            "target-arrow-color": "rgba(45,245,208,0.58)",
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
             opacity: 0.78,
@@ -198,8 +198,9 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
   }, [graph, mode, onSelect, selectedId]);
 
   return (
-    <div className="relative h-full min-h-[560px] w-full overflow-hidden rounded-[8px] bg-[#1c1a20]">
-      <div className="absolute left-4 top-4 z-10 flex rounded-[8px] border border-white/10 bg-black/45 p-1 backdrop-blur-xl">
+    <div className="relative h-full min-h-[560px] w-full overflow-hidden rounded-[26px] bg-[radial-gradient(circle_at_28%_18%,rgba(45,245,208,0.12),transparent_26%),radial-gradient(circle_at_78%_82%,rgba(249,115,22,0.1),transparent_28%),#070812]">
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:54px_54px] opacity-50" />
+      <div className="absolute left-4 top-4 z-10 flex rounded-[18px] border border-white/10 bg-black/45 p-1 backdrop-blur-xl">
         {modes.map((item) => {
           const Icon = item.icon;
           return (
@@ -215,7 +216,7 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
               {mode === item.id && (
                 <motion.span
                   layoutId="graph-mode"
-                  className="absolute inset-0 rounded-[6px] bg-white/10"
+                  className="absolute inset-0 rounded-[14px] bg-white/10"
                   transition={{ type: "spring", stiffness: 360, damping: 30 }}
                 />
               )}
@@ -225,7 +226,7 @@ export function KnowledgeGraph({ index, subject, selectedId, onSelect }: Knowled
           );
         })}
       </div>
-      <div className="absolute bottom-4 left-4 z-10 rounded-[8px] border border-white/10 bg-black/45 px-3 py-2 text-xs text-slate-300 backdrop-blur-xl">
+      <div className="absolute bottom-4 left-4 z-10 rounded-[18px] border border-white/10 bg-black/45 px-3 py-2 text-xs text-slate-300 backdrop-blur-xl">
         {graph.nodes.length} nodes / {graph.edges.length} links / click a node to open
       </div>
       <div ref={containerRef} className="h-full min-h-[560px] w-full" />
