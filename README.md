@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# StudyUlt AI Study OS
 
-## Getting Started
+A localhost-first, markdown-native AI study operating system for JEE, NCERT, boards, active recall, and graph-based learning.
 
-First, run the development server:
+## Run Locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## What Is Built
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Next.js, React, TypeScript, TailwindCSS
+- Framer Motion animated dashboard and transitions
+- Three.js particle backdrop through React Three Fiber
+- Cytoscape.js Obsidian-style concept graph
+- Markdown vault parser with frontmatter, tags, wikilinks, backlinks, formulas, flashcards, and tests
+- MiniSearch instant fuzzy search
+- LaTeX rendering with remark/rehype
+- Local AI route with pluggable provider fallback for Ollama, LM Studio, OpenRouter, Claude, Gemini, and DeepSeek style endpoints
+- Project MCP setup for 21st.dev Magic, Magic UI, Shadcn, Aceternity registry, and React Bits registry
 
-## Learn More
+## Vault Structure
 
-To learn more about Next.js, take a look at the following resources:
+Markdown lives in `MasterVault`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```text
+MasterVault/
+  Physics/
+  Chemistry/
+  Mathematics/
+  Flashcards/
+  Tests/
+  Analytics/
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Any `.md` file is indexed on API refresh. Use:
 
-## Deploy on Vercel
+```markdown
+---
+title: Gauss Law
+tags: [JEE, Physics, weak]
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Link to [[Electric Field]] and formulas like $E = kq/r^2$.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Q:: Question text A:: Answer text
+- MCQ:: Prompt Options:: A | B | C | D Answer:: A
+```
+
+## MCP And Registries
+
+Project-local MCP config is in `.mcp.json` and `.vscode/mcp.json`.
+
+Shadcn registry aliases are in `components.json`:
+
+- `@aceternity`
+- `@react-bits`
+
+Codex MCP server entries were also added to `C:/Users/Rehan/.codex/config.toml` for this trusted workspace.
+
+## AI Providers
+
+For local inference, set `LOCAL_AI_ENDPOINT` in `.env.local`. The API route posts:
+
+```json
+{
+  "provider": "local",
+  "prompt": "Explain Gauss Law",
+  "context": []
+}
+```
+
+Without an endpoint, the app uses a deterministic local tutor fallback connected to the vault analytics.
